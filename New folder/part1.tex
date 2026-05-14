@@ -1,0 +1,39 @@
+\section{GIỚI THIỆU TỔNG QUAN}
+
+\subsection{Lý do chọn đề tài}
+Trong kỷ nguyên Công nghiệp 4.0, khái niệm "Smart Home" (Nhà thông minh) không còn xa lạ và đang dần trở thành tiêu chuẩn mới cho không gian sống hiện đại. Việc quản lý các thiết bị điện trong nhà một cách thủ công không chỉ gây lãng phí thời gian mà còn khó kiểm soát năng lượng tiêu thụ, đặc biệt là đối với các căn hộ có cấu trúc phức tạp như nhà nhiều tầng, nhiều phòng.
+
+Từ thực tiễn đó, nhóm thực hiện đề tài \textbf{"Xây dựng ứng dụng Mobile quản lý các thiết bị trong nhà"} nhằm mang đến một giải pháp quản lý tập trung. Hệ thống cho phép người dùng giám sát các thông số môi trường và điều khiển thiết bị từ xa thông qua ứng dụng di động, giúp tối ưu hóa sự tiện nghi và an toàn cho ngôi nhà.
+
+\subsection{Mục tiêu đề tài}
+Dự án hướng đến việc xây dựng một hệ thống IoT (Internet of Things) hoàn chỉnh bao gồm các mục tiêu cụ thể sau:
+\begin{itemize}
+    \item \textbf{Về phần cứng:} Thiết kế và lập trình trên bộ kit Yolo:bit để thu thập dữ liệu từ cảm biến (nhiệt độ, độ ẩm, ánh sáng) và điều khiển các thiết bị ngoại vi (quạt, đèn RGB, màn hình LCD).
+    \item \textbf{Về truyền dẫn:} Hiện thực hóa giao thức MQTT để kết nối thiết bị với server trung gian Adafruit IO thông qua mạng WiFi.
+    \item \textbf{Về phần mềm:} Phát triển ứng dụng di động hoàn thiện (bao gồm Frontend, Backend và Database) để quản lý cấu trúc nhà đa tầng, thiết lập lịch trình hoạt động và hệ thống cảnh báo thông minh.
+\end{itemize}
+
+\subsection{Đối tượng và phạm vi nghiên cứu}
+\subsubsection{Đối tượng nghiên cứu}
+\begin{itemize}
+    \item Hệ sinh thái lập trình kéo thả trên nền tảng \textit{app.ohstem.vn}.
+    \item Giao thức truyền tin MQTT và server trung gian Adafruit IO.
+    \item Các ngôn ngữ lập trình cho Mobile App và quản trị cơ sở dữ liệu.
+\end{itemize}
+
+\subsubsection{Phạm vi nghiên cứu}
+\begin{itemize}
+    \item \textbf{Thiết bị sử dụng:} Mỗi phòng trong mô hình được trang bị 01 mạch Yolo:bit, 01 cảm biến nhiệt độ - độ ẩm, 01 cảm biến ánh sáng, 01 quạt mini, 01 đèn RGB và 01 màn hình LCD.
+    \item \textbf{Tính năng quản lý:} Tập trung vào quản lý theo đơn vị Tầng $\rightarrow$ Phòng $\rightarrow$ Thiết bị.
+    \item \textbf{Giới hạn:} Hệ thống hoạt động tối ưu trong môi trường có kết nối WiFi ổn định để đảm bảo việc cập nhật dữ liệu thời gian thực giữa mạch điều khiển và ứng dụng di động.
+\end{itemize}
+
+\subsection{Phương pháp thực hiện}
+Nhóm đã triển khai dự án theo quy trình tuần tự dựa trên lộ trình hướng dẫn:
+\begin{enumerate}
+    \item Phân tích yêu cầu và thiết kế Database.
+    \item Lập trình phần cứng và cấu hình Dashboard trên Adafruit.
+    \item Xây dựng Backend để kết nối API từ Adafruit về ứng dụng.
+    \item Thiết kế giao diện Frontend và tích hợp các tính năng điều khiển, đặt lịch.
+    \item Kiểm thử hệ thống và hiệu chỉnh sai số cảm biến.
+\end{enumerate}

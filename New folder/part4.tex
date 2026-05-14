@@ -1,0 +1,162 @@
+\section{HIỆN THỰC HỆ THỐNG}
+
+\subsection{Lập trình thiết bị phần cứng (Yolo:bit)}
+
+Trong chương này, hệ thống Smart Home được hiện thực hóa thông qua việc kết hợp giữa nền tảng lập trình OhStem và hạ tầng Cloud của Adafruit IO. Phần cứng Yolo:bit đóng vai trò trung tâm xử lý tại chỗ, đảm bảo các kịch bản điều khiển được thực thi chính xác theo logic đã thiết kế.
+
+\subsubsection{Môi trường lập trình và vai trò của Yolo:bit}
+
+Hệ sinh thái OhStem cung cấp giải pháp tích hợp từ phần cứng đến môi trường lập trình kéo thả trực quan (Blocks) dựa trên triết lý mã nguồn mở. Mạch Yolo:bit, sử dụng vi xử lý ESP32, được chọn làm thiết bị trung tâm nhờ hiệu năng cao và khả năng kết nối không dây mạnh mẽ.
+
+Trong kiến trúc thực tế, Yolo:bit đảm nhận song song hai nhiệm vụ:
+\begin{itemize}
+    \item \textbf{Edge Device (Thiết bị biên):} Trực tiếp đọc tín hiệu điện áp từ các cảm biến, chuyển đổi sang giá trị vật lý và thực hiện gửi dữ liệu lên Broker Adafruit IO.
+    \item \textbf{Actuator Controller (Bộ điều khiển chấp hành):} Lắng nghe liên tục các thay đổi trạng thái từ Cloud để điều khiển các thiết bị ngoại vi như quạt và đèn.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.6\linewidth]{image/Ohstem.png}
+    \caption{Giao diện lập trình kéo thả trực quan trên hệ sinh thái OhStem}
+\end{figure}
+
+\subsubsection{Khởi tạo kết nối mạng và giao thức MQTT}
+
+Để thiết bị có thể tương tác với thế giới bên ngoài, giai đoạn khởi tạo (Setup) tập trung vào việc thiết lập hạ tầng truyền thông:
+\begin{itemize}
+    \item \textbf{Kết nối Wi-Fi:} Yolo:bit được cấp quyền truy cập vào mạng nội bộ để thiết lập kênh truyền Internet.
+    \item \textbf{Cấu hình MQTT Client:} Thiết bị được cấu hình để định danh tới Server Adafruit IO. Tuy nhiên, các thông số chi tiết về Feed ID và Account Key sẽ được trình bày cụ thể trong phần \textit{4.2. Cấu hình Server Adafruit IO}.
+    \item \textbf{Khởi tạo ngoại vi:} Hệ thống tiến hành xóa bộ nhớ đệm màn hình LCD và gán giá trị mặc định cho các thiết bị chấp hành (\texttt{fan = 0}, \texttt{lumi = 0}) để đảm bảo an toàn hệ thống khi vừa khởi động.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{image/setup.png}
+    \vspace{10pt}
+    \caption{Khối lệnh hiện thực giai đoạn khởi tạo hệ thống}
+\end{figure}
+
+\subsubsection{Vòng lặp cập nhật dữ liệu môi trường (Main Loop)}
+
+Chương trình vận hành một vòng lặp vô hạn (Forever loop) với chu kỳ nghỉ là 10.000ms (10 giây). Khoảng thời gian này được tính toán để cân bằng giữa việc cập nhật dữ liệu thời gian thực và việc tuân thủ giới hạn băng thông của Server Adafruit IO (tránh tình trạng bị chặn do gửi dữ liệu quá dày đặc). 
+
+Toàn bộ quy trình trong vòng lặp được chia thành hai giai đoạn logic chính tương ứng với các hình ảnh minh họa dưới đây:
+
+\paragraph{Giai đoạn 1: Thu thập và xử lý dữ liệu tại chỗ}
+Như mô tả trong Hình \ref{fig:loop_logic_1}, thiết bị thực hiện các bước đọc tín hiệu vật lý từ môi trường:
+\begin{itemize}
+    \item \textbf{Đọc cảm biến DHT20:} Hệ thống truy xuất giá trị nhiệt độ và độ ẩm thông qua giao tiếp I2C. Sau đó, các giá trị này được làm tròn thành số nguyên thông qua khối lệnh \textit{"lấy phần nguyên"} để loại bỏ các dao động nhỏ không cần thiết, giúp dữ liệu hiển thị ổn định hơn.
+    \item \textbf{Đọc cảm biến Ánh sáng:} Giá trị cường độ ánh sáng được đọc trực tiếp từ cổng Analog P2. Dữ liệu này được chuyển đổi sang kiểu số nguyên để đồng bộ định dạng với các cảm biến khác.
+    \item \textbf{Hiển thị LCD1602:} Ngay sau khi đọc thành công, các giá trị được đưa lên màn hình LCD tại chỗ. Dòng 1 hiển thị Nhiệt độ (\texttt{Temp}) và Độ ẩm (\texttt{Humi}), dòng 2 hiển thị Cường độ sáng (\texttt{Bright}). Việc hiển thị này đảm bảo hệ thống vẫn cung cấp thông tin cho người dùng ngay cả khi mất kết nối mạng.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{image/loop.png}
+    \vspace{10pt}
+    \caption{Khối lệnh xử lý đọc cảm biến và hiển thị lên màn hình LCD}
+    \label{fig:loop_logic_1}
+\end{figure}
+
+\paragraph{Giai đoạn 2: Đồng bộ hóa dữ liệu lên Cloud (Publishing)}
+Tiếp nối quy trình, Hình \ref{fig:loop_logic_2} mô tả cách thức đóng gói và gửi dữ liệu thông qua giao thức MQTT:
+\begin{itemize}
+    \item \textbf{Khối lệnh MQTT Publish:} Ba khối lệnh \textit{"gửi dữ liệu đến chủ đề"} được thực hiện liên tiếp. Các biến số vừa lưu trữ (Nhiệt độ, Độ ẩm, Ánh sáng) được đẩy lên các Feed tương ứng trên Adafruit IO là \texttt{DA\_TEMP}, \texttt{DA\_HUMI} và \texttt{DA\_BRIG}.
+    \item \textbf{Cơ chế làm trễ (Delay):} Lệnh \textit{"tạm dừng 10000ms"} được đặt ở cuối vòng lặp. Đây là bước quan trọng để duy trì nhịp độ vận hành của hệ thống, giúp vi xử lý ESP32 có thời gian giải phóng bộ nhớ đệm và chuẩn bị cho chu kỳ đọc tiếp theo.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.85\linewidth]{image/loop1.png}
+    \vspace{10pt}
+    \caption{Khối lệnh đóng gói dữ liệu và đẩy lên Server Adafruit IO}
+    \label{fig:loop_logic_2}
+\end{figure}
+
+\subsubsection{Logic nhận lệnh và điều khiển thiết bị chấp hành}
+
+Hệ thống xử lý lệnh điều khiển theo cơ chế hướng sự kiện (Event-driven). Khi có tín hiệu từ người dùng thông qua ứng dụng di động gửi tới Adafruit IO, Yolo:bit sẽ phản hồi ngay lập tức:
+\begin{itemize}
+    \item \textbf{Điều khiển Quạt:} Tiếp nhận giá trị từ feed \texttt{DA\_FAN} để điều chỉnh tốc độ quạt thông qua kỹ thuật băm xung PWM tại chân P1 (từ 0\% đến 100\%).
+    \item \textbf{Điều khiển Đèn RGB:} Dựa trên giá trị nhận được từ feed \texttt{DA\_RGB}, biến \texttt{lumi} sẽ thay đổi để kích hoạt các chế độ màu sắc (0: Tắt, 1: Cam, 2: Trắng).
+    \item \textbf{Thông điệp tùy chỉnh:} Nhận văn bản từ feed \texttt{DA\_LCD} để hiển thị các thông báo đặc biệt từ hệ thống quản lý lên màn hình LCD.
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{image/event.png}
+    \vspace{10pt}
+    \caption{Khối lệnh hiện thực logic xử lý sự kiện điều khiển từ xa}
+\end{figure}
+
+\subsection{Hiện thực kết nối mạng và cấu hình giao diện Cloud}
+
+Sau khi đã thiết lập logic xử lý tại thiết bị, bước tiếp theo là cấu hình hạ tầng truyền thông và giao diện quản lý trên nền tảng Cloud Adafruit IO. Đây là thành phần đóng vai trò trung gian (Broker) giúp kết nối người dùng với thiết bị thông qua internet.
+
+\subsubsection{Cấu hình kết nối Wi-Fi và giao thức MQTT}
+
+Dựa trên các khối lệnh thực tế (khối màu cam đậm), quy trình kết nối được thực hiện ngay khi thiết bị khởi động để đảm bảo tính sẵn sàng cao nhất.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=0.9\linewidth]{image/setup.png}
+    \vspace{10pt}
+    \caption{Khối lệnh cấu hình hạ tầng mạng và tài khoản Cloud}
+    \label{fig:mqtt_setup}
+\end{figure}
+
+Việc hiện thực được mô tả chi tiết qua hai bước:
+\begin{itemize}
+    \item \textbf{Kết nối Wi-Fi:} Thiết bị được cấu hình truy cập vào điểm phát có SSID \texttt{H6-601} với mật khẩu tương ứng. Đây là bước tiên quyết để Yolo:bit có thể định tuyến dữ liệu ra môi trường internet.
+    \item \textbf{Cấu hình MQTT Client:} Sử dụng thư viện Adafruit IO tích hợp trên OhStem, thiết bị được đăng ký với tài khoản người dùng \texttt{w7thm}. Mã khóa bảo mật (AIO Key) được nạp trực tiếp vào khối lệnh để thiết lập kênh truyền dữ liệu bảo mật hai chiều giữa phần cứng và Server.
+\end{itemize}
+
+\subsubsection{Thiết lập hệ thống Feed dữ liệu}
+
+Hệ thống sử dụng các Feed (chủ đề) để phân loại và lưu trữ dữ liệu. Các Feed được chia làm hai nhóm chính: Nhóm dữ liệu cảm biến (Publish) và Nhóm lệnh điều khiển (Subscribe).
+
+\begin{table}[H]
+\centering
+\caption{Danh mục các Feed và chức năng trong hệ thống}
+\label{tab:feeds_list}
+\begin{tabular}{|l|l|p{8cm}|}
+\hline
+\textbf{Tên Feed} & \textbf{Loại dữ liệu} & \textbf{Mô tả chức năng} \\ \hline
+\texttt{DA\_TEMP} & Số thực & Cập nhật giá trị nhiệt độ môi trường từ cảm biến DHT20. \\ \hline
+\texttt{DA\_HUMI} & Số thực & Cập nhật giá trị độ ẩm môi trường từ cảm biến DHT20. \\ \hline
+\texttt{DA\_BRIG} & Số nguyên & Cập nhật cường độ ánh sáng (\%) từ chân P2. \\ \hline
+\texttt{DA\_FAN} & Số nguyên & Điều khiển tốc độ quạt (giá trị từ 0 - 100). \\ \hline
+\texttt{DA\_RGB} & Số nguyên & Điều khiển trạng thái đèn LED (0: Tắt, 1: Màu vàng/cam, 2: Màu trắng). \\ \hline
+\texttt{DA\_LCD} & Chuỗi (String) & Nhận văn bản từ Dashboard hoặc giá trị cảm biến để hiển thị lên LCD1602. \\ \hline
+\texttt{DA\_MODE} & Nhị phân (0/1) & Lựa chọn chế độ vận hành: 0 là Manual (Thủ công), 1 là Auto (Tự động theo ngưỡng cảm biến). \\ \hline
+\end{tabular}
+\end{table}
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{image/feeds.png}
+    \vspace{10pt}
+    \caption{Danh sách các Feed được khởi tạo thực tế trên Adafruit IO}
+    \label{fig:feeds_list_img}
+\end{figure}
+
+\subsubsection{Thiết kế Dashboard và Logic vận hành hệ thống}
+
+Giao diện Dashboard được thiết kế theo hướng trực quan hóa dữ liệu (Data Visualization), giúp người dùng dễ dàng giám sát và can thiệp vào hệ thống từ xa.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\linewidth]{image/dashboard.png}
+    \vspace{10pt}
+    \caption{Giao diện Dashboard điều khiển và giám sát Smart Home}
+    \label{fig:dashboard}
+\end{figure}
+
+Dựa trên thiết kế tại Hình \ref{fig:dashboard}, logic vận hành của hệ thống được quy định như sau:
+
+\begin{itemize}
+    \item \textbf{Chế độ Manual (DA\_MODE = 0):} Người dùng có toàn quyền điều khiển thông qua các thành phần giao diện. Nút gạt \textit{MODE BUTTON} chuyển về vị trí \textit{Manu}. Khi đó, tốc độ quạt được điều chỉnh qua thanh trượt \textit{Fan speed adjust} và màu sắc đèn được chọn qua \textit{Luminous intensity adjust}.
+    \item \textbf{Chế độ Auto (DA\_MODE = 1):} Hệ thống tự động tính toán dựa trên các ngưỡng giá trị. Nhiệt độ và độ ẩm sẽ quyết định tốc độ quay của quạt (ví dụ: nhiệt độ càng cao quạt càng mạnh). Cường độ sáng môi trường (\texttt{DA\_BRIG}) sẽ quyết định trạng thái bật/tắt của đèn để tiết kiệm năng lượng.
+    \item \textbf{Giám sát thời gian thực:} Các biểu đồ (Charts) cho \textit{Temperature}, \textit{Huminity} và \textit{Brightness} hiển thị lịch sử biến động của môi trường, giúp người dùng theo dõi được xu hướng thay đổi theo thời gian.
+    \item \textbf{Tương tác hiển thị:} Khối \textit{Display LCD} cho phép người dùng nhập các thông điệp tùy chỉnh. Khi nhấn gửi, chuỗi ký tự này được đẩy xuống feed \texttt{DA\_LCD}, mạch Yolo:bit sẽ tiếp nhận sự kiện và cập nhật nội dung mới lên màn hình LCD1602 tại chỗ.
+\end{itemize}

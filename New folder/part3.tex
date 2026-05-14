@@ -1,0 +1,295 @@
+\section{THIẾT KẾ HỆ THỐNG}
+
+Chương này trình bày các thiết kế chi tiết về kiến trúc kết nối, sơ đồ cơ sở dữ liệu và quy trình hoạt động của hệ thống quản lý thiết bị thông minh đa tầng.
+
+\subsection{Kiến trúc tổng thể (System Architecture)}
+
+Hệ thống được thiết kế dựa trên mô hình điều khiển từ xa thông qua môi trường Internet, sử dụng giao thức truyền tin trung gian để đảm bảo tính thời gian thực và sự ổn định.
+
+\subsubsection{Mô hình kết nối hệ thống}
+Kiến trúc hệ thống bao gồm ba thành phần chính tương tác chặt chẽ với nhau: \textbf{Mạch điều khiển (Yolo:bit)}, \textbf{Server trung gian (Adafruit IO)} và \textbf{Ứng dụng di động (Mobile App)}.
+
+\begin{itemize}
+    \item \textbf{Tầng thiết bị (Hardware Layer - Yolo:bit):}
+    \begin{itemize}
+        \item Đóng vai trò là các nút mạng (Nodes) tại từng phòng.
+        \item Thu thập dữ liệu từ các cảm biến (Nhiệt độ, độ ẩm, ánh sáng).
+        \item Thực thi các lệnh điều khiển cho thiết bị đầu ra (Quạt, đèn RGB, LCD).
+        \item Kết nối Internet qua WiFi và giao tiếp bằng giao thức MQTT.
+    \end{itemize}
+    
+    \item \textbf{Tầng trung gian (Server Layer - Adafruit IO):}
+    \begin{itemize}
+        \item Đóng vai trò là một MQTT Broker.
+        \item Quản lý các luồng dữ liệu (Feeds) riêng biệt cho từng loại cảm biến và thiết bị điều khiển.
+        \item Lưu trữ tạm thời trạng thái thiết bị để đồng bộ giữa App và phần cứng.
+    \end{itemize}
+
+    \item \textbf{Tầng ứng dụng (Application Layer - Mobile App):}
+    \begin{itemize}
+        \item Cung cấp giao diện quản lý đa tầng, đa phòng cho người dùng.
+        \item Kết nối tới Adafruit IO để lấy dữ liệu cảm biến và gửi lệnh điều khiển.
+        \item Tương tác với Cơ sở dữ liệu riêng (Database) để quản lý thông tin cấu hình nhà và nhật ký hệ thống.
+    \end{itemize}
+\end{itemize}
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=6.5cm, % Kéo dài khoảng cách giữa các tâm khối
+        block/.style={
+            rectangle, 
+            draw=blue!70, 
+            thick, 
+            fill=blue!5,
+            text width=3.2cm, % Thu nhỏ chiều rộng khối
+            inner sep=5pt,    % Khoảng cách đệm bên trong khối
+            align=center, 
+            minimum height=1.8cm,
+            rounded corners,
+            font=\small\bfseries
+        },
+        cloud/.style={
+            ellipse, 
+            draw=orange!70, 
+            thick, 
+            fill=orange!5,
+            text width=2.8cm, % Thu nhỏ hình elip
+            inner sep=2pt,
+            align=center, 
+            minimum height=2cm,
+            font=\small\bfseries
+        },
+        arrow/.style={
+            <->, 
+            >=stealth, 
+            thick, 
+            line width=1.2pt,
+            draw=gray!80
+        }
+    ]
+
+    % Vẽ các khối
+    \node [block] (yolobit) {
+        HARDWARE LAYER \\ \vspace{0.15cm}
+        \normalfont\scriptsize\makecell{Yolo:bit Kit \\ (Sensors \& Actuators) \\ MQTT Client (WiFi)}
+    };
+    
+    \node [cloud, right of=yolobit] (adafruit) {
+        SERVER LAYER \\ \vspace{0.1cm}
+        \normalfont\scriptsize\makecell{Adafruit IO \\ (MQTT Broker)}
+    };
+    
+    \node [block, right of=adafruit] (app) {
+        APP LAYER \\ \vspace{0.15cm}
+        \normalfont\scriptsize\makecell{Mobile Application \\ (User Interface) \\ MQTT Client (Internet)}
+    };
+
+    % Vẽ mũi tên kết nối và nhãn (sử dụng yshift để tách nhãn khỏi mũi tên)
+    \draw [arrow] (yolobit) -- (adafruit) 
+        node[midway, above, yshift=5pt, font=\footnotesize\itshape] {Publish/Subscribe}
+        node[midway, below, yshift=-5pt, font=\footnotesize\ttfamily] {Topic: /feeds/...};
+        
+    \draw [arrow] (adafruit) -- (app) 
+        node[midway, above, yshift=5pt, font=\footnotesize\itshape] {Publish/Subscribe}
+        node[midway, below, yshift=-5pt, font=\footnotesize\ttfamily] {Topic: /feeds/...};
+
+    \end{tikzpicture}
+    
+    \vspace{0.8cm} 
+    \caption{Sơ đồ khối kiến trúc kết nối tổng thể hệ thống (Đã tối ưu bố cục)}
+    \label{fig:architecture_diagram_optimized}
+\end{figure}
+
+\subsubsection{Cơ chế truyền tin qua giao thức MQTT}
+Hệ thống sử dụng mô hình \textbf{Publish/Subscribe} (Xuất bản/Đăng ký) của giao thức MQTT để tối ưu hóa băng thông và đảm bảo tốc độ phản hồi:
+
+\begin{table}[H]
+\centering
+\caption{Mô tả luồng dữ liệu MQTT trong hệ thống}
+\begin{tabular}{|m{3cm}|m{3cm}|m{3cm}|m{4cm}|}
+\hline
+\textbf{Luồng dữ liệu} & \textbf{Bên Xuất bản (Publisher)} & \textbf{Bên Đăng ký (Subscriber)} & \textbf{Mục đích} \\ \hline
+Dữ liệu cảm biến & Yolo:bit & Mobile App & Cập nhật thông số môi trường lên giao diện người dùng. \\ \hline
+Lệnh điều khiển & Mobile App & Yolo:bit & Bật/Tắt quạt, đổi màu đèn RGB theo ý muốn. \\ \hline
+Trạng thái tự động & Yolo:bit & Mobile App & Thông báo cho App biết khi thiết bị tự kích hoạt do vượt ngưỡng. \\ \hline
+\end{tabular}
+\end{table}
+
+\subsubsection{Quy trình hoạt động tổng quát}
+
+\textbf{1. Giai đoạn khởi tạo:} Mạch Yolo:bit kết nối WiFi, sau đó kết nối tới Broker Adafruit IO với tài khoản định sẵn.
+
+\textbf{2. Chu kỳ gửi dữ liệu:} Mỗi 5 giây, Yolo:bit đọc dữ liệu cảm biến và \textit{Publish} lên các feed tương ứng (ví dụ: \texttt{/feeds/sensor-temp}). Mobile App \textit{Subscribe} các feed này để hiển thị biểu đồ.
+
+\textbf{3. Chu kỳ điều khiển:} Khi người dùng thao tác trên App, App \textit{Publish} một tin nhắn chứa mã lệnh (ví dụ: "ON", "OFF" hoặc mã màu Hex) lên feed điều khiển. Yolo:bit nhận được tin nhắn ngay lập tức và thay đổi trạng thái chân cắm của quạt hoặc đèn.
+
+Hệ thống quản lý nhà thông minh đa tầng được thiết kế theo mô hình IoT ba lớp tiêu chuẩn, đảm bảo tính tách biệt giữa phần cứng thực thi và phần mềm quản lý. Các thành phần chính bao gồm:
+\begin{itemize}
+    \item \textbf{Thiết bị đầu cuối (Nodes):} Các bộ kit Yolo:bit đảm nhận việc thu thập dữ liệu cảm biến và thực thi lệnh tại mỗi phòng.
+    \item \textbf{Máy chủ trung gian (Broker):} Nền tảng Adafruit IO quản lý luồng dữ liệu thông qua giao thức MQTT.
+    \item \textbf{Ứng dụng di động (Gateway):} Giao diện tương tác người dùng, xử lý logic điều khiển và lưu trữ lịch sử.
+\end{itemize}
+
+\clearpage 
+
+\begin{landscape}
+\begin{figure}[p] % Sử dụng [p] để hình nằm trọn vẹn và cân giữa trang
+    \centering
+    % Dùng \makebox để ép hình căn giữa tuyệt đối kể cả khi nó hơi rộng hơn lề một chút
+    \makebox[\linewidth][c]{
+        \includegraphics[width=1.0\linewidth]{image/DOAN.jpg}
+    }
+    \vspace{10pt}
+    \caption{Sơ đồ kiến trúc phần mềm và luồng tương tác dữ liệu hệ thống}
+    \label{fig:system_architecture_landscape}
+\end{figure}
+\end{landscape}
+
+\clearpage % Sau khi hết trang ngang, dùng clearpage để văn bản tiếp theo quay lại trang dọc bình thường
+
+\subsection{Thiết kế Cơ sở dữ liệu (Database Design)}
+
+Cơ sở dữ liệu của hệ thống được thiết kế theo mô hình quan hệ (RDBMS), tập trung vào việc quản lý cấu trúc phân cấp của ngôi nhà thông minh và lưu trữ lịch sử vận hành một cách tối ưu.
+
+\subsubsection{Sơ đồ thực thể mối quan hệ (ERD)}
+
+Sơ đồ ERD mô tả các thực thể chính và mối quan hệ giữa chúng, đảm bảo tính toàn vẹn dữ liệu khi người dùng thao tác trên ứng dụng.
+
+\begin{landscape}
+\begin{figure}[p]
+    \centering
+    \makebox[\linewidth][c]{
+        \includegraphics[height=2\textheight, width=0.95\textwidth, keepaspectratio]{image/DADN-ERD.drawio.png}
+    }
+    \vspace{10pt}
+    \caption{Sơ đồ thực thể mối quan hệ (ERD) của hệ thống (Đã căn chỉnh lại)}
+    \label{fig:erd_diagram}
+\end{figure}
+\end{landscape}
+
+\subsubsection{Mô tả các thực thể chính}
+Dựa trên Hình \ref{fig:erd_diagram}, các thực thể chính trong hệ thống bao gồm:
+\begin{itemize}
+    \item \textbf{Users:} Lưu trữ thông tin định danh người dùng (Email, Password, Name). Một người dùng có thể sở hữu một hoặc nhiều Ngôi nhà.
+    \item \textbf{Houses, Floors, Rooms:} Bộ ba thực thể này tạo nên cấu trúc phân cấp. Một \textit{House} có nhiều \textit{Floor}, và mỗi \textit{Floor} chứa nhiều \textit{Room}. Mối quan hệ 1-N được thiết lập chặt chẽ qua các khóa ngoại (\textit{Foreign Keys}).
+    \item \textbf{Devices:} Lưu trữ danh sách thiết bị trong từng phòng. Mỗi thiết bị được định danh qua \textit{id}, \textit{name} và \textit{type} (Cảm biến, Quạt, Đèn RGB, LCD).
+    \item \textbf{Schedules:} Quản lý các thiết lập lịch trình. Thực thể này lưu trữ thời gian (\textit{time}), các ngày trong tuần (\textit{days}) và trạng thái mong muốn (\textit{action}) của thiết bị.
+    \item \textbf{System Logs:} Lưu trữ mọi biến động của hệ thống, bao gồm giá trị cảm biến và lịch sử điều khiển, giúp người dùng có thể tra cứu lại hoạt động trong quá khứ.
+\end{itemize}
+
+\subsubsection{Thiết kế Ánh xạ dữ liệu (Mapping Design)}
+Để hệ thống có thể hiểu được dữ liệu từ Adafruit IO thuộc về thiết bị nào trong cơ sở dữ liệu, một cấu trúc ánh xạ (Mapping) đã được thiết lập.
+
+\begin{figure}[H]
+    \centering
+    \includegraphics[width=1\textwidth]{image/DADN-Mapping.drawio.png}
+    \vspace{10pt}
+    \caption{Sơ đồ ánh xạ (Mapping) dữ liệu giữa App và Adafruit Server}
+    \label{fig:mapping_diagram}
+\end{figure}
+
+Như được mô tả trong Hình \ref{fig:mapping_diagram}, quy trình ánh xạ được thực hiện như sau:
+\begin{itemize}
+    \item \textbf{Định danh Feed:} Mỗi thiết bị vật lý kết nối với Yolo:bit được gán với một \textit{Feed ID} duy nhất trên Adafruit (ví dụ: \texttt{bk-iot-temp}, \texttt{bk-iot-led}).
+    \item \textbf{Liên kết CSDL:} Trong bảng \textit{Devices}, cột thông tin kết nối sẽ lưu trữ \textit{Feed Key} tương ứng. Khi có dữ liệu mới từ MQTT Broker, Backend sẽ dựa vào \textit{Key} này để cập nhật trạng thái vào đúng \textit{Room ID} và \textit{Floor ID} trong cơ sở dữ liệu của người dùng.
+    \item \textbf{Đồng bộ trạng thái:} Quy trình này đảm bảo rằng khi người dùng mở App, các biểu đồ và nút bấm luôn hiển thị đúng trạng thái thực tế của thiết bị tại đúng vị trí đã lắp đặt.
+\end{itemize}
+
+% #LÀM NỐT 3.3 NHÉ
+% 3.3. Thiết kế Giao diện (UI/UX Design):   
+
+% Bản vẽ Wireframe/Mockup các màn hình chính (Dashboard, Quản lý phòng, Cài đặt lịch trình).
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+% \\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\\
+
+% content/part3.tex
+
+\subsection{Thiết kế phần cứng (Hardware Design)}
+
+Phần này trình bày sơ đồ thiết kế kết nối vật lý giữa mạch điều khiển trung tâm và các module ngoại vi. Việc xác định sơ đồ chân cắm là bước quan trọng để đảm bảo tính tương thích về tín hiệu và điện áp trước khi tiến hành lập trình hiện thực.
+
+\subsubsection{Sơ đồ kết nối các module hệ thống}
+
+Dưới đây là sơ đồ chi tiết việc phân bổ các cổng kết nối trên mạch mở rộng của Yolo:bit. Sơ đồ được thiết kế nhằm tối ưu hóa đường đi của dây dẫn và đảm bảo các cảm biến I2C không bị xung đột địa chỉ.
+
+\begin{figure}[H]
+    \centering
+    \begin{tikzpicture}[
+        node distance=1.5cm, % Rút ngắn khoảng cách giữa các khối
+        every node/.style={font=\small},
+        % Khối trung tâm
+        main_box/.style={rectangle, draw=red!60, fill=red!5, thick, text width=4.5cm, align=center, minimum height=3.2cm, rounded corners},
+        % Khối cảm biến bên trái
+        sensor_box/.style={rectangle, draw=blue!60, fill=blue!5, thick, text width=3.2cm, align=center, minimum height=1.1cm},
+        % Khối chấp hành bên phải
+        actuator_box/.style={rectangle, draw=orange!60, fill=orange!5, thick, text width=3.2cm, align=center, minimum height=1.1cm},
+        conn_line/.style={draw, thick, >=stealth, <->, line width=1pt, gray!70}
+    ]
+
+    % Mạch trung tâm nằm chính giữa
+    \node [main_box] (yolobit) {
+        \textbf{YOLO:BIT}\\ 
+        \textit{Micro-controller}\\ 
+        \textbf{\& EXPANSION BOARD}\\
+        \vspace{0.2cm}
+        \footnotesize (Tầng trung tâm xử lý)
+    };
+
+    % Các module bên trái - Khoảng cách ngang được rút ngắn (left=1.6cm)
+    \node [sensor_box, left=1.6cm of yolobit, yshift=2.2cm] (dht) {\textbf{Cảm biến DHT20}\\ (Nhiệt độ - Độ ẩm)};
+    \node [sensor_box, left=1.6cm of yolobit, yshift=0cm] (lcd) {\textbf{Màn hình LCD 1602}\\ (Hiển thị thông tin)};
+    \node [sensor_box, left=1.6cm of yolobit, yshift=-2.2cm] (light) {\textbf{Cảm biến Ánh sáng}\\ (Cường độ sáng)};
+
+    % Các module bên phải - Khoảng cách ngang được rút ngắn (right=1.6cm)
+    \node [actuator_box, right=1.6cm of yolobit, yshift=1.5cm] (fan) {\textbf{Quạt Mini}\\ (Động cơ DC)};
+    \node [actuator_box, right=1.6cm of yolobit, yshift=-1.5cm] (rgb) {\textbf{Đèn LED RGB}\\ (Hiển thị màu sắc)};
+
+    % Đường nối chân cắm bên TRÁI - Nhãn được thu gọn
+    \draw [conn_line] (dht.east) -- (yolobit.160) node[midway, above, black, font=\scriptsize] {I2C};
+    \draw [conn_line] (lcd.east) -- (yolobit.west) node[midway, above, black, font=\scriptsize] {I2C};
+    \draw [conn_line] (light.east) -- (yolobit.200) node[midway, below, black, font=\scriptsize] {P2};
+
+    % Đường nối chân cắm bên PHẢI - Mũi tên ngắn lại và trỏ vào cạnh trái module
+    \draw [conn_line] (yolobit.20) -- (fan.west) node[midway, above, black, font=\scriptsize] {P1};
+    \draw [conn_line] (yolobit.340) -- (rgb.west) node[midway, below, black, font=\scriptsize] {P0};
+
+    % Chú thích nguồn
+    \node [below=0.8cm of yolobit, font=\scriptsize\itshape] (power) {Nguồn: 5V DC qua cổng USB};
+    \draw [dashed, ->] (power.north) -- (yolobit.south);
+
+    \end{tikzpicture}
+    \vspace{10pt}
+    \caption{Sơ đồ thiết kế kết nối vật lý hệ thống}
+    \label{fig:physical_connection_diagram}
+\end{figure}
+
+\subsubsection{Mô tả chi tiết sơ đồ thiết kế}
+
+Dựa trên sơ đồ kết nối tại Hình \ref{fig:physical_connection_diagram}, cấu trúc phần cứng được tổ chức theo các quy chuẩn sau:
+
+\begin{enumerate}
+    \item \textbf{Giao tiếp Bus I2C (Cảm biến DHT20 và LCD):} Hai thiết bị này được thiết kế kết nối song song trên cùng một tuyến bus I2C. Việc sử dụng I2C giúp tiết kiệm chân tín hiệu của Yolo:bit mà vẫn đảm bảo tốc độ truyền nhận dữ liệu số ổn định. Màn hình LCD được thiết lập để nhận dữ liệu hiển thị, trong khi DHT20 gửi dữ liệu môi trường về mạch trung tâm.
+    
+    \item \textbf{Kết nối Analog (Cảm biến Ánh sáng):} Được thiết kế nối vào cổng \textbf{P2}. Cổng này cho phép Yolo:bit sử dụng bộ chuyển đổi ADC (Analog-to-Digital Converter) để đọc các giá trị cường độ ánh sáng thay đổi liên tục từ môi trường dưới dạng điện áp.
+    
+    \item \textbf{Điều khiển Actuators (Quạt và Đèn RGB):}
+    \begin{itemize}
+        \item \textbf{Quạt Mini:} Nối vào cổng \textbf{P1}. Thiết kế này cho phép điều khiển tốc độ quạt thông qua tín hiệu PWM (Pulse Width Modulation), giúp thay đổi công suất động cơ linh hoạt từ 0\% đến 100\%.
+        \item \textbf{Đèn LED RGB:} Nối vào cổng \textbf{P0}. Chân này nhận tín hiệu kỹ thuật số để điều khiển tổ hợp màu sắc của các mắt LED bên trong, phục vụ cho việc thông báo trạng thái nhà thông minh.
+    \end{itemize}
+    
+    \item \textbf{Hệ thống nguồn:} Toàn bộ các module đều sử dụng chung mức điện áp 5V được cung cấp từ mạch mở rộng, lấy nguồn trực tiếp từ cổng Micro-USB của Yolo:bit để đảm bảo sự đồng bộ về mass (GND) cho toàn hệ thống.
+\end{enumerate}
