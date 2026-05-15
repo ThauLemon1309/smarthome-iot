@@ -265,7 +265,7 @@ export default function ScheduleFormPage() {
         <Button
           className="w-full bg-purple-600 hover:bg-purple-700"
           onClick={handleSubmit}
-          disabled={!name.trim() || (repeatType === 'weekly' && selectedDays.length === 0)}
+          disabled={!name.trim() || (repeatType === 'weekly' && selectedDays.length === 0) || !targetDeviceId}
         >
           <Save className="size-4 mr-2" /> Lưu lịch trình
         </Button>

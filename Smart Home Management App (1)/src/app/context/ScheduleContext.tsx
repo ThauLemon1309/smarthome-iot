@@ -66,6 +66,7 @@ export function ScheduleProvider({ children }: { children: React.ReactNode }) {
         status: schedule.status,
         createdBy: schedule.createdBy,
         time: schedule.time,
+        durationMinutes: schedule.durationMinutes,
         actions: schedule.actions,
       });
       if (res.data.status === 'success') {
